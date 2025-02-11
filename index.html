@@ -67,33 +67,22 @@
             outputDiv.innerHTML = '<p>Loading real-time data...</p>';
 
             try {
-                // Replace YOUR_API_KEY with your actual Alpha Vantage API key
-                const apiKey = 'YOUR_API_KEY'; // Example: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-                const apiUrl = `https://www.alphavantage.co/query?function=FX_INTRADAY&from_symbol=XAU&to_symbol=USD&interval=5min&apikey=${apiKey}`;
-
-                // Fetch data from Alpha Vantage API
-                const response = await fetch(apiUrl);
+                // Fetch real-time gold price from CoinGecko API
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=gold&vs_currencies=usd');
                 const data = await response.json();
 
-                // Check if the API returned valid data
-                if (!data['Time Series FX (5min)']) {
-                    throw new Error('No data available. Check your API key or try again later.');
+                if (!data || !data.gold || !data.gold.usd) {
+                    throw new Error('No data available. Please try again later.');
                 }
 
-                // Extract the latest data point
-                const timeSeries = data['Time Series FX (5min)'];
-                const latestTime = Object.keys(timeSeries)[0];
-                const latestData = timeSeries[latestTime];
-
-                // Parse the data
-                const currentPrice = parseFloat(latestData['4. close']);
+                // Extract the current price of gold
+                const currentPrice = data.gold.usd;
                 const support = currentPrice - 10; // Example: Assume support is 10 pips below
                 const resistance = currentPrice + 10; // Example: Assume resistance is 10 pips above
                 const rsi = Math.random() * 20 + 40; // Simulated RSI (replace with real RSI calculation)
                 const ma5 = currentPrice - 2; // Simulated 5-period MA
                 const ma20 = currentPrice - 5; // Simulated 20-period MA
                 const supertrend = Math.random() > 0.5 ? 'green' : 'red'; // Simulated Supertrend
-                const volume = parseFloat(latestData['5. volume']) || 1.0;
 
                 // Analyze market conditions
                 let signalHTML = '';
@@ -110,8 +99,7 @@
                         </div>
                     `;
                 } else if (currentPrice >= resistance &&
-                           supertrend === 'green' &&
-                           volume > 1.1) {
+                           supertrend === 'green') {
                     // Breakout trade signal
                     signalHTML = `
                         <div class="signal-box">
@@ -141,7 +129,6 @@
                     <p><strong>5-Period MA:</strong> $${ma5.toFixed(2)}</p>
                     <p><strong>20-Period MA:</strong> $${ma20.toFixed(2)}</p>
                     <p><strong>Supertrend:</strong> ${supertrend}</p>
-                    <p><strong>Volume:</strong> ${volume.toFixed(2)}x average</p>
                     ${signalHTML}
                 `;
             } catch (error) {
