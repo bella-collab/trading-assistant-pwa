@@ -49,64 +49,77 @@
         button:hover {
             background-color: #1b5e20;
         }
+        canvas {
+            max-width: 100%;
+            height: auto;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Trading Assistant PWA</h1>
-        <p>This app analyzes the market in real-time and provides clear signals for entry, stop-loss, and take-profit levels.</p>
+        <p>This app analyzes the 5-minute market data and provides clear entry, stop-loss, and take-profit levels for scalping.</p>
 
         <button id="analyzeButton">Analyze Market</button>
 
         <div id="output"></div>
+        <canvas id="priceChart"></canvas>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         document.getElementById('analyzeButton').addEventListener('click', async function() {
             const outputDiv = document.getElementById('output');
             outputDiv.innerHTML = '<p>Loading real-time data...</p>';
 
             try {
-                // Fetch real-time gold price from CoinGecko API
-                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=gold&vs_currencies=usd');
+                // Fetch 5-minute candlestick data from Binance API
+                const response = await fetch('https://api.binance.com/api/v3/klines?symbol=XAUUSDT&interval=5m&limit=50');
                 const data = await response.json();
 
-                if (!data || !data.gold || !data.gold.usd) {
+                if (!data || data.length === 0) {
                     throw new Error('No data available. Please try again later.');
                 }
 
-                // Extract the current price of gold
-                const currentPrice = data.gold.usd;
-                const support = currentPrice - 10; // Example: Assume support is 10 pips below
-                const resistance = currentPrice + 10; // Example: Assume resistance is 10 pips above
-                const rsi = Math.random() * 20 + 40; // Simulated RSI (replace with real RSI calculation)
-                const ma5 = currentPrice - 2; // Simulated 5-period MA
-                const ma20 = currentPrice - 5; // Simulated 20-period MA
-                const supertrend = Math.random() > 0.5 ? 'green' : 'red'; // Simulated Supertrend
+                // Parse candlestick data
+                const prices = data.map(candle => parseFloat(candle[4])); // Close prices
+                const currentPrice = prices[prices.length - 1]; // Latest close price
 
-                // Analyze market conditions
+                // Calculate simple moving averages (SMA)
+                const sma5 = calculateSMA(prices, 5); // 5-period SMA
+                const sma20 = calculateSMA(prices, 20); // 20-period SMA
+
+                // Calculate RSI (Relative Strength Index)
+                const rsi = calculateRSI(prices, 14); // 14-period RSI
+
+                // Define support and resistance levels
+                const support = Math.min(...prices.slice(-10)) - 0.5; // Lowest price in last 10 candles
+                const resistance = Math.max(...prices.slice(-10)) + 0.5; // Highest price in last 10 candles
+
+                // Analyze market conditions for scalping
                 let signalHTML = '';
-                if (currentPrice <= support &&
-                    rsi > 50 &&
-                    ma5 > ma20) {
+                if (currentPrice <= support && // Price near support
+                    rsi < 30 && // Oversold condition
+                    sma5 > sma20) { // Short-term MA above long-term MA
                     // Pullback trade signal
                     signalHTML = `
                         <div class="signal-box">
                             <h2>Pullback Trade Signal</h2>
-                            <p><strong>Entry:</strong> Buy at $${support + 2} (near support).</p>
-                            <p><strong>Stop-Loss:</strong> Set at $${support - 5}.</p>
-                            <p><strong>Take-Profit:</strong> Target $${support + 15}.</p>
+                            <p><strong>Entry:</strong> Buy at $${support.toFixed(2)} (near support).</p>
+                            <p><strong>Stop-Loss:</strong> Set at $${(support - 0.5).toFixed(2)}.</p>
+                            <p><strong>Take-Profit:</strong> Target $${(support + 1.5).toFixed(2)}.</p>
                         </div>
                     `;
-                } else if (currentPrice >= resistance &&
-                           supertrend === 'green') {
+                } else if (currentPrice >= resistance && // Price near resistance
+                           rsi > 70 && // Overbought condition
+                           sma5 < sma20) { // Short-term MA below long-term MA
                     // Breakout trade signal
                     signalHTML = `
                         <div class="signal-box">
                             <h2>Breakout Trade Signal</h2>
-                            <p><strong>Entry:</strong> Buy at $${resistance + 2} (above resistance).</p>
-                            <p><strong>Stop-Loss:</strong> Set at $${resistance - 5}.</p>
-                            <p><strong>Take-Profit:</strong> Target $${resistance + 15}.</p>
+                            <p><strong>Entry:</strong> Sell at $${resistance.toFixed(2)} (above resistance).</p>
+                            <p><strong>Stop-Loss:</strong> Set at $${(resistance + 0.5).toFixed(2)}.</p>
+                            <p><strong>Take-Profit:</strong> Target $${(resistance - 1.5).toFixed(2)}.</p>
                         </div>
                     `;
                 } else {
@@ -114,7 +127,7 @@
                     signalHTML = `
                         <div class="error-box">
                             <h2>No Clear Signal</h2>
-                            <p>The market conditions do not meet the criteria for a trade signal at this time.</p>
+                            <p>The market conditions do not meet the criteria for a scalping signal at this time.</p>
                         </div>
                     `;
                 }
@@ -126,11 +139,44 @@
                     <p><strong>Support Level:</strong> $${support.toFixed(2)}</p>
                     <p><strong>Resistance Level:</strong> $${resistance.toFixed(2)}</p>
                     <p><strong>RSI:</strong> ${rsi.toFixed(2)}</p>
-                    <p><strong>5-Period MA:</strong> $${ma5.toFixed(2)}</p>
-                    <p><strong>20-Period MA:</strong> $${ma20.toFixed(2)}</p>
-                    <p><strong>Supertrend:</strong> ${supertrend}</p>
+                    <p><strong>5-Period SMA:</strong> $${sma5.toFixed(2)}</p>
+                    <p><strong>20-Period SMA:</strong> $${sma20.toFixed(2)}</p>
                     ${signalHTML}
                 `;
+
+                // Add a price chart
+                const ctx = document.getElementById('priceChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: Array.from({ length: prices.length }, (_, i) => `Candle ${i + 1}`),
+                        datasets: [{
+                            label: 'Price',
+                            data: prices,
+                            borderColor: '#2e7d32',
+                            backgroundColor: 'rgba(46, 125, 50, 0.2)',
+                            borderWidth: 2,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                display: true
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: false
+                            },
+                            y: {
+                                beginAtZero: false
+                            }
+                        }
+                    }
+                });
+
             } catch (error) {
                 outputDiv.innerHTML = `
                     <div class="error-box">
@@ -140,6 +186,37 @@
                 `;
             }
         });
+
+        // Function to calculate Simple Moving Average (SMA)
+        function calculateSMA(prices, period) {
+            const sma = [];
+            for (let i = period - 1; i < prices.length; i++) {
+                const slice = prices.slice(i - period + 1, i + 1);
+                const avg = slice.reduce((sum, price) => sum + price, 0) / period;
+                sma.push(avg);
+            }
+            return sma[sma.length - 1]; // Return the latest SMA value
+        }
+
+        // Function to calculate Relative Strength Index (RSI)
+        function calculateRSI(prices, period) {
+            const gains = [];
+            const losses = [];
+            for (let i = 1; i < prices.length; i++) {
+                const change = prices[i] - prices[i - 1];
+                if (change > 0) {
+                    gains.push(change);
+                    losses.push(0);
+                } else {
+                    gains.push(0);
+                    losses.push(-change);
+                }
+            }
+            const avgGain = gains.slice(-period).reduce((sum, gain) => sum + gain, 0) / period;
+            const avgLoss = losses.slice(-period).reduce((sum, loss) => sum + loss, 0) / period;
+            const rs = avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
+        }
     </script>
 </body>
 </html>
